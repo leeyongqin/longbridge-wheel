@@ -323,11 +323,16 @@ class LongbridgeBroker:
         seen: Dict[str, PortfolioItem] = {}
 
         for ch in resp.channels:
-            log.debug(f"portfolio channel: {ch!r}")
             for pos in ch.positions:
-                log.debug(
-                    f"  raw pos: {pos!r}"
-                )
+                try:
+                    log.debug(
+                        f"raw pos: symbol={getattr(pos,'symbol','?')!r} "
+                        f"qty={getattr(pos,'quantity','?')} "
+                        f"cost={getattr(pos,'cost_price','?')} "
+                        f"name={getattr(pos,'symbol_name','?')!r}"
+                    )
+                except Exception as _dbg_e:
+                    log.debug(f"raw pos: error reading fields: {_dbg_e}")
                 contract = self._lb_symbol_to_contract(pos.symbol)
                 if contract is None:
                     log.warning(f"portfolio: 无法解析 symbol={pos.symbol}，已跳过")
