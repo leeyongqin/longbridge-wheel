@@ -51,6 +51,36 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
+# LB OrderStatus 名称提取辅助函数
+# ---------------------------------------------------------------------------
+
+_LB_STATUS_NAMES = [
+    "Unknown", "NotReported", "ReplacedNotReported", "ProtectedNotReported",
+    "VarietiesNotReported", "Filled", "WaitToNew", "New", "WaitToReplace",
+    "PendingReplace", "Replaced", "PartialFilled", "WaitToCancel",
+    "PendingCancel", "Rejected", "Canceled", "Expired", "PartialWithdrawal",
+]
+
+
+def _lb_status_name(status: Any) -> str:
+    """
+    从 LB SDK OrderStatus 对象提取状态名称字符串。
+
+    LB SDK（Rust/PyO3 binding）的 OrderStatus 在运行时是单例实例而非子类，
+    type(status).__name__ 返回 "OrderStatus" 而非 "New"。
+    使用 is 身份比较来正确提取名称。
+    """
+    from longbridge.openapi import OrderStatus
+
+    for name in _LB_STATUS_NAMES:
+        if status is getattr(OrderStatus, name, None):
+            return name
+    # fallback: 尝试类名（subclass pattern）或直接字符串化
+    name = type(status).__name__
+    return name if name != "OrderStatus" else str(status)
+
+
+# ---------------------------------------------------------------------------
 # FakeOptionChain — 鸭子类型替代 ib_async.OptionChain
 # ---------------------------------------------------------------------------
 
@@ -188,7 +218,7 @@ class LongbridgeBroker:
             return
 
         # 从 LB OrderStatus 枚举类型提取状态名称字符串
-        status_name = type(event.status).__name__
+        status_name = _lb_status_name(event.status)
         trade.orderStatus.status = status_name
         trade.orderStatus.filled = float(getattr(event, "executed_quantity", 0) or 0)
 
@@ -744,7 +774,9 @@ class LongbridgeBroker:
                 continue
 
             # 重建 LimitOrder（供 print_summary 等显示用）
-            side_name = type(order.side).__name__
+            # OrderSide も同じ Rust singleton pattern
+            from longbridge.openapi import OrderSide as _OS
+            side_name = "Sell" if order.side is _OS.Sell else "Buy"
             action = "SELL" if side_name == "Sell" else "BUY"
             price_val = float(order.price) if order.price else 0.0
             qty_val = float(order.quantity)
@@ -759,7 +791,7 @@ class LongbridgeBroker:
                 contract=contract,
                 order=lb_order,
             )
-            status_name = type(order.status).__name__
+            status_name = _lb_status_name(order.status)
             trade.orderStatus.status = status_name
             trade.orderStatus.filled = float(order.executed_quantity)
             trade.orderStatus.remaining = qty_val - float(order.executed_quantity)
