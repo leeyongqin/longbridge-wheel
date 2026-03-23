@@ -80,10 +80,10 @@ action_when_closed = "exit"
 max_wait_until_open = 3600
 
 # 开市后等待时间（秒）：避免开盘初始波动
-delay_after_open = 1800
+delay_after_open = 180
 
 # 收盘前停止运行时间（秒）：避免临收盘波动
-delay_before_close = 1800
+delay_before_close = 180
 
 # ============================================================
 # 订单配置
