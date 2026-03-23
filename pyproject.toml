@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "longbridge-wheel"
+version = "0.1.0"
+description = "基于 Longbridge（长桥证券）API 的期权 Wheel 策略自动交易系统"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    # Longbridge OpenAPI SDK（需要 v3.0.3+ 以支持 calc_indexes greeks）
+    "longbridge>=1.0",
+    # CLI 框架
+    "click>=8.0",
+    "click-log>=0.4",
+    # 配置文件解析（TOML）
+    "tomlkit>=0.11",
+    # 数据模型验证
+    "pydantic>=2.0",
+    # 终端输出美化
+    "rich>=13.0",
+    # 数据库 ORM 和迁移
+    "sqlalchemy>=2.0",
+    "alembic>=1.12",
+    # 交易日历（判断市场开市状态）
+    "exchange-calendars>=4.0",
+    # 科学计算（Black-Scholes fallback delta 计算）
+    "scipy>=1.10",
+    "numpy>=1.24",
+    # 数据分析（regime 引擎历史数据处理）
+    "pandas>=2.0",
+]
+
+[project.scripts]
+longbridge-wheel = "longbridge_wheel.entry:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["longbridge_wheel"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

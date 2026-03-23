@@ -1,0 +1,244 @@
+# ============================================================
+# Longbridge Wheel — 示例配置文件
+# ============================================================
+#
+# 使用前请：
+# 1. 设置环境变量（API 认证）：
+#    export LONGBRIDGE_APP_KEY="your_app_key"
+#    export LONGBRIDGE_APP_SECRET="your_app_secret"
+#    export LONGBRIDGE_ACCESS_TOKEN="your_access_token"
+#
+# 2. 修改 [runtime.account] 中的账户号
+# 3. 修改 [portfolio.symbols] 中的标的和权重
+#
+# ============================================================
+
+[meta]
+schema_version = 2
+
+# 启用的策略模块（vix_call_hedge v1 暂不支持）
+[run]
+strategies = ["wheel", "cash_management"]
+
+# ============================================================
+# 账户配置
+# ============================================================
+
+[runtime.account]
+# 长桥账户号（实盘或模拟账户）
+number = "YOUR_ACCOUNT_NUMBER"
+
+# 启动时撤销本账户中未成交的相关订单
+cancel_orders = true
+
+# 保证金使用率：使用净值的 50% 作为可用购买力
+# 例如：净值 $100,000 × 0.5 = $50,000 购买力上限
+margin_usage = 0.5
+
+# ============================================================
+# Longbridge API 配置
+# ============================================================
+
+[runtime.longbridge]
+# API 认证通过环境变量传入（LONGBRIDGE_APP_KEY / APP_SECRET / ACCESS_TOKEN）
+# 也可以直接在此设置（环境变量优先）：
+# app_key = ""
+# app_secret = ""
+# access_token = ""
+
+# Black-Scholes fallback delta 计算使用的无风险利率
+# 仅当 calc_indexes() 返回 null delta 时使用（流动性差的合约）
+risk_free_rate = 0.045
+
+# ============================================================
+# 期权链扫描配置
+# ============================================================
+
+[runtime.option_chains]
+# 扫描最近 N 个到期日（按 target_dte 过滤后取前 N 个）
+expirations = 4
+
+# 每个到期日扫描最近 N 个行权价（put: 最高 N 个, call: 最低 N 个）
+strikes = 15
+
+# ============================================================
+# 市场开市时间检查
+# ============================================================
+
+[runtime.exchange_hours]
+# 交易所代码（NYSE）
+exchange = "XNYS"
+
+# 市场关闭时的行为："exit" | "wait" | "continue"
+action_when_closed = "exit"
+
+# 最长等待开市时间（秒）
+max_wait_until_open = 3600
+
+# 开市后等待时间（秒）：避免开盘初始波动
+delay_after_open = 1800
+
+# 收盘前停止运行时间（秒）：避免临收盘波动
+delay_before_close = 1800
+
+# ============================================================
+# 订单配置
+# ============================================================
+
+[runtime.orders]
+# 订单路由交易所（LB 中仅作占位符，不影响实际路由）
+exchange = "SMART"
+
+# 价格调整延迟范围（秒）：[最短, 最长]
+# 若标的配置了 adjust_price_after_delay = true，
+# 在提交订单后随机等待此区间内的时间，再进行重定价
+price_update_delay = [30, 60]
+
+# 最低信用额（美元）：低于此值的订单将被跳过（避免不覆盖手续费）
+minimum_credit = 0.05
+
+  [runtime.orders.algo]
+  # LB 不支持 IBKR 算法单（Adaptive/TWAP 等），这些设置被忽略
+  # 保留此段以兼容 config schema v2
+  strategy = ""
+  params = []
+
+# ============================================================
+# 数据库配置（可选）
+# ============================================================
+
+[runtime.database]
+# 启用 SQLite 本地数据库（记录订单历史、持仓快照、账户余额）
+enabled = true
+
+# 数据库文件路径（相对于 config 文件位置，或使用绝对路径）
+path = "data/longbridge_wheel.db"
+
+# 可选：指定完整 SQLAlchemy URL
+# url = "sqlite:////path/to/longbridge_wheel.db"
+
+# ============================================================
+# Wheel 策略参数
+# ============================================================
+
+[strategies.wheel.defaults.target]
+# 目标到期天数（DTE）：选择 DTE >= 此值的合约
+dte = 45
+
+# 最大 DTE：避免 roll 到过远的到期日
+max_dte = 180
+
+# 目标 delta：选择 |delta| <= 此值的合约
+delta = 0.30
+
+# 新开仓时单次最大合约数（占购买力百分比）
+# 默认 5%：若购买力 $100,000，则单次最多买入 $5,000 价值对应的合约数
+maximum_new_contracts_percent = 0.05
+
+# 最低持仓量（Open Interest）过滤：OI < 此值的合约跳过
+minimum_open_interest = 100
+
+[strategies.wheel.defaults.write_when]
+# 计算合约数量时是否包含多头期权（抵消空头）
+calculate_net_contracts = false
+
+  [strategies.wheel.defaults.write_when.calls]
+  # 只在标的当日收涨（绿色）时写 call
+  green = true
+  red   = false
+  cap_factor = 1.0
+
+  [strategies.wheel.defaults.write_when.puts]
+  # 写 put 时不限制涨跌方向
+  green = true
+  red   = true
+
+[strategies.wheel.defaults.roll_when]
+# 当 DTE <= 此值时尝试 roll
+dte = 21
+
+# 当持仓盈利 >= 此比例时提前 roll（例如 0.5 = 盈利 50% 时 roll）
+pnl = 0.50
+
+# DTE 剩余较少时是否强制 roll（不论 delta）
+min_dte = 0
+
+  [strategies.wheel.defaults.roll_when.calls]
+  # 看涨期权变实值（ITM）时不 roll
+  itm = false
+  # 盈利超过 50% 时 roll
+  credit_only = true
+
+  [strategies.wheel.defaults.roll_when.puts]
+  # 看跌期权变实值（ITM）时尝试 roll
+  itm = true
+  # 只有 roll 能带来信用（credit）时才 roll
+  credit_only = false
+
+[strategies.wheel.defaults.close_at_pnl]
+# 当持仓盈利达到此比例时，提前关仓（buyback）
+# 设置为 1.0 表示不提前平仓
+max = 1.0
+
+[strategies.wheel.defaults.constants]
+# 计算历史波动率所用的历史数据窗口（用于 write_threshold）
+daily_stddev_window = "21 D"
+
+# ============================================================
+# 现金管理策略（可选）
+# ============================================================
+
+[strategies.cash_management]
+# 将闲置现金投入货币市场基金
+enabled = false
+
+# 货币市场基金代码（例如：SGOV / BIL / VMFXX）
+cash_fund = "SGOV"
+
+# 保留最低现金量（美元）
+cash_reserve = 1000
+
+# ============================================================
+# Regime 再平衡策略（可选，默认禁用）
+# ============================================================
+
+[strategies.regime_rebalance]
+enabled = false
+# shares_only = false  # 设为 true 时只交易股票，不写期权
+
+# ============================================================
+# VIX call hedge（v1 不支持，请勿启用）
+# ============================================================
+
+[strategies.vix_call_hedge]
+enabled = false
+
+# ============================================================
+# 持仓标的配置
+# ============================================================
+# 添加你想操作的股票标的。
+# weight 是资金分配权重（相对值，多个标的时按比例分配）。
+# 完整配置选项请参考 thetagang 文档。
+
+[portfolio.symbols.SPY]
+weight = 1.0
+# 覆盖全局 target_dte
+# dte = 45
+# 覆盖全局 target_delta
+# delta = 0.30
+# 最低 OI 过滤
+# minimum_open_interest = 100
+# 提交订单后是否在 price_update_delay 后重定价
+adjust_price_after_delay = true
+primary_exchange = "ARCA"
+
+# 以下为多标的示例（取消注释即可使用）：
+# [portfolio.symbols.QQQ]
+# weight = 0.5
+# primary_exchange = "NASDAQ"
+# adjust_price_after_delay = true
+#
+# [portfolio.symbols.AAPL]
+# weight = 0.3
+# primary_exchange = "NASDAQ"
+# delta = 0.25      # 覆盖全局 delta
