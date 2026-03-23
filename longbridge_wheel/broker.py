@@ -539,6 +539,7 @@ class LongbridgeBroker:
         rho: Optional[float] = None
         implied_vol: Optional[float] = None
         open_interest: Optional[float] = None
+        hist_vol: Optional[float] = None
         bid: Optional[float] = None
         ask: Optional[float] = None
 
@@ -557,7 +558,7 @@ class LongbridgeBroker:
         except Exception as exc:
             log.warning(f"{contract.symbol}: calc_indexes 失败: {exc}")
 
-        # option_quote fallback：提供 last_done / IV / OI（calc_indexes 返回 null 时使用）
+        # option_quote：提供 last_done / IV / OI / historical_volatility fallback
         try:
             opt_quotes = await self._quote_ctx.option_quote([lb_symbol])
             if opt_quotes:
@@ -568,7 +569,10 @@ class LongbridgeBroker:
                     implied_vol = decimal_to_float(q.implied_volatility) or None
                 if not open_interest and q.open_interest:
                     open_interest = float(q.open_interest)
-        except Exception as exc:
+                hv = decimal_to_float(q.historical_volatility)
+                if hv and hv > 0:
+                    hist_vol = hv
+        except Exception:
             pass  # option_quote 失败时静默继续
 
         try:
@@ -593,6 +597,7 @@ class LongbridgeBroker:
             bid=bid,
             ask=ask,
             risk_free_rate=self.config.longbridge.risk_free_rate,
+            hist_vol=hist_vol,
         )
 
     async def get_underlying_hist_vol(
@@ -704,6 +709,14 @@ class LongbridgeBroker:
             if not open_interest_val and quote is not None and quote.open_interest:
                 open_interest_val = float(quote.open_interest)
 
+            # historical_volatility: option_quote 直接提供标的历史波动率，
+            # 优先使用，避免额外的 history_candlesticks 调用
+            contract_hist_vol = hist_vol
+            if quote is not None:
+                hv = decimal_to_float(quote.historical_volatility)
+                if hv and hv > 0:
+                    contract_hist_vol = hv
+
             ticker = build_fake_ticker(
                 contract=contract,
                 last_done=last_done_val,
@@ -717,7 +730,7 @@ class LongbridgeBroker:
                 bid=None,   # 批量场景不逐个调用 depth()
                 ask=None,
                 risk_free_rate=self.config.longbridge.risk_free_rate,
-                hist_vol=hist_vol,
+                hist_vol=contract_hist_vol,
             )
             tickers.append(ticker)
 
