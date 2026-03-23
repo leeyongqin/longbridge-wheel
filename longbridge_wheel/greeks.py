@@ -188,28 +188,35 @@ def parse_option_symbol(lb_symbol: str) -> Optional[FakeContract]:
         return None
 
     try:
-        # 找到数字开头的位置（ticker 长度可变）
+        # LB 返回的 symbol 带市场后缀（如 "SPY260515P679000.US"）
+        # 解析时去掉后缀，localSymbol 保留原始格式供 lb_symbol() 使用
+        symbol_clean = lb_symbol.split(".")[0] if "." in lb_symbol else lb_symbol
+
+        # 找到数字开头的位置（ticker 长度可变：SPY=3, AAPL=4, etc.）
         i = 0
-        while i < len(lb_symbol) and not lb_symbol[i].isdigit():
+        while i < len(symbol_clean) and not symbol_clean[i].isdigit():
             i += 1
 
-        if i == 0 or i + 15 > len(lb_symbol):
+        # 至少需要：ticker(≥1) + YYMMDD(6) + C/P(1) + strike(≥1)
+        if i == 0 or i + 8 > len(symbol_clean):
             return None
 
-        ticker = lb_symbol[:i]                    # 如 "AAPL"
-        date_str = lb_symbol[i : i + 6]           # YYMMDD，如 "240119"
-        right = lb_symbol[i + 6]                  # "C" 或 "P"
-        strike_str = lb_symbol[i + 7 : i + 15]   # 8位行权价×1000，如 "00150000"
+        ticker = symbol_clean[:i]              # 如 "SPY", "AAPL"
+        date_str = symbol_clean[i : i + 6]    # YYMMDD，如 "260515"
+        right = symbol_clean[i + 6]            # "C" 或 "P"
+        strike_str = symbol_clean[i + 7:]      # 剩余全部为行权价，如 "679000"
 
         if right not in ("C", "P"):
+            return None
+        if not strike_str or not strike_str.isdigit():
             return None
 
         # 将 YYMMDD 转换为 YYYYMMDD
         year = int(date_str[:2])
         year_full = 2000 + year if year < 80 else 1900 + year
-        expiry = f"{year_full}{date_str[2:6]}"     # "20240119"
+        expiry = f"{year_full}{date_str[2:6]}"  # "20260515"
 
-        strike = int(strike_str) / 1000.0          # 150000 → 150.0
+        strike = int(strike_str) / 1000.0  # 679000 → 679.0
 
         from longbridge_wheel.options import option_dte
         dte = option_dte(expiry)
