@@ -323,12 +323,10 @@ class LongbridgeBroker:
         seen: Dict[str, PortfolioItem] = {}
 
         for ch in resp.channels:
-            log.debug(f"portfolio channel: account_channel={ch.account_channel!r}")
+            log.debug(f"portfolio channel: {ch!r}")
             for pos in ch.positions:
                 log.debug(
-                    f"  raw pos: symbol={pos.symbol!r} "
-                    f"qty={pos.quantity} cost={pos.cost_price} "
-                    f"market={pos.market} name={pos.symbol_name!r}"
+                    f"  raw pos: {pos!r}"
                 )
                 contract = self._lb_symbol_to_contract(pos.symbol)
                 if contract is None:
