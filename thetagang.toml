@@ -20,8 +20,8 @@ schema_version = 2
 
 # 启用的策略模块（vix_call_hedge v1 暂不支持）
 [run]
-strategies = ["wheel", "equity_rebalance", "cash_management"]
-# ⚠️ equity_rebalance 已启用：会自动买卖股票以维持权重比例，实盘需确认
+strategies = ["wheel", "cash_management"]
+# equity_rebalance 不是独立策略 ID — 股票再平衡已内置于 wheel 策略中
 
 # ============================================================
 # 账户配置
@@ -225,29 +225,29 @@ enabled = false
 # 完整配置选项请参考 thetagang 文档。
 
 [portfolio.symbols.SPY]
-weight = 1.0
+weight = 0.30
 adjust_price_after_delay = true
 primary_exchange = "ARCA"
 
 [portfolio.symbols.QQQ]
-weight = 0.8
+weight = 0.25
 adjust_price_after_delay = true
 primary_exchange = "NASDAQ"
 
 [portfolio.symbols.NVDA]
-weight = 0.5
+weight = 0.15
 adjust_price_after_delay = true
 primary_exchange = "NASDAQ"
 minimum_open_interest = 50
 
 [portfolio.symbols.TSLA]
-weight = 0.5
+weight = 0.15
 adjust_price_after_delay = true
 primary_exchange = "NASDAQ"
 minimum_open_interest = 50
 # 用户持有 100 股 TSLA，wheel 策略将自动写 covered call
 
 [portfolio.symbols.AAPL]
-weight = 0.5
+weight = 0.15
 adjust_price_after_delay = true
 primary_exchange = "NASDAQ"
