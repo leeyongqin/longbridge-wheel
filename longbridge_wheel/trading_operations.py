@@ -338,10 +338,21 @@ class OptionChainScanner:
         )
 
         # ------------------------------------------------------------------
+        # 步骤 4.5：获取标的历史波动率（当 calc_indexes 无行情时用作 B-S fallback）
+        # ------------------------------------------------------------------
+        hist_vol = await self.ibkr.get_underlying_hist_vol(symbol)
+        if hist_vol:
+            log.info(
+                f"{symbol}: 历史波动率 {hist_vol:.1%}（将作为 B-S fallback 波动率）"
+            )
+        else:
+            log.debug(f"{symbol}: 历史波动率获取失败，B-S fallback 不可用")
+
+        # ------------------------------------------------------------------
         # 步骤 5：批量获取 greeks（单次 calc_indexes 调用）
         # ------------------------------------------------------------------
         tickers = await self.ibkr.get_tickers_for_contracts(
-            symbol, all_candidates
+            symbol, all_candidates, hist_vol=hist_vol
         )
 
         # ------------------------------------------------------------------
@@ -410,9 +421,16 @@ class OptionChainScanner:
                 min_oi = 0
 
             if min_oi > 0:
-                tickers = [
-                    t for t in tickers if open_interest_is_valid(t, min_oi)
-                ]
+                # 若所有合约 OI 均为 0（无 USOption 行情订阅时 calc_indexes 返回 null），
+                # 跳过 OI 过滤，避免误删所有候选合约
+                has_oi_data = any(
+                    t.callOpenInterest > 0 or t.putOpenInterest > 0
+                    for t in tickers
+                )
+                if has_oi_data:
+                    tickers = [
+                        t for t in tickers if open_interest_is_valid(t, min_oi)
+                    ]
 
             return sorted(
                 sorted(

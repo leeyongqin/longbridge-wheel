@@ -24,6 +24,7 @@ broker.py — LongbridgeBroker：Longbridge API 抽象层
 from __future__ import annotations
 
 import asyncio
+import math
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -519,6 +520,47 @@ class LongbridgeBroker:
             risk_free_rate=self.config.longbridge.risk_free_rate,
         )
 
+    async def get_underlying_hist_vol(
+        self, symbol: str, window: int = 21
+    ) -> Optional[float]:
+        """
+        计算标的历史波动率（年化）。
+
+        使用近 (window+5) 个交易日的日收盘价，计算对数收益率标准差并年化。
+        当 calc_indexes() 无法返回 IV（如无 USOption 行情订阅）时，
+        用作 Black-Scholes delta 与理论价格计算的 fallback 波动率。
+
+        仅需 Nasdaq Basic 订阅即可获取 history_candlesticks_by_date()。
+        """
+        from longbridge_wheel.greeks import build_stock_contract
+
+        try:
+            fake_stock = build_stock_contract(symbol)
+            candles = await self.request_historical_data(
+                fake_stock, f"{window + 5} D"
+            )
+            if not candles or len(candles) < 5:
+                return None
+            closes = [float(c.close) for c in candles if c.close and float(c.close) > 0]
+            closes = closes[-window:]
+            if len(closes) < 5:
+                return None
+            log_returns = [
+                math.log(closes[i] / closes[i - 1])
+                for i in range(1, len(closes))
+            ]
+            if not log_returns:
+                return None
+            mean = sum(log_returns) / len(log_returns)
+            variance = sum((r - mean) ** 2 for r in log_returns) / max(
+                len(log_returns) - 1, 1
+            )
+            annual_vol = math.sqrt(variance) * math.sqrt(252)
+            return float(annual_vol) if annual_vol > 0 else None
+        except Exception as exc:
+            log.warning(f"{symbol}: 历史波动率计算失败: {exc}")
+            return None
+
     async def get_tickers_for_contracts(
         self,
         underlying_symbol: str,
@@ -526,6 +568,7 @@ class LongbridgeBroker:
         generic_tick_list: str = "",
         required_fields: Optional[List[Any]] = None,
         optional_fields: Optional[List[Any]] = None,
+        hist_vol: Optional[float] = None,
     ) -> List[FakeTicker]:
         """
         批量获取合约的 FakeTicker 列表。
@@ -573,6 +616,7 @@ class LongbridgeBroker:
                 bid=None,   # 批量场景不逐个调用 depth()
                 ask=None,
                 risk_free_rate=self.config.longbridge.risk_free_rate,
+                hist_vol=hist_vol,
             )
             tickers.append(ticker)
 

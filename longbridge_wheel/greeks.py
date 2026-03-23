@@ -70,6 +70,36 @@ def bs_delta(
         return None
 
 
+def bs_price(
+    S: float,
+    K: float,
+    T: float,
+    r: float,
+    sigma: float,
+    right: str,
+) -> Optional[float]:
+    """
+    使用 Black-Scholes 公式计算欧式期权理论价格。
+
+    当 calc_indexes() 无 last_done（无行情订阅）时用作 price fallback，
+    供 price_is_valid() / midpoint_or_market_price() 使用。
+    """
+    if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
+        return None
+    try:
+        from scipy.stats import norm  # type: ignore[import]
+
+        d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
+        d2 = d1 - sigma * math.sqrt(T)
+        discount = math.exp(-r * T)
+        if right.upper().startswith("C"):
+            return float(S * norm.cdf(d1) - K * discount * norm.cdf(d2))
+        else:
+            return float(K * discount * norm.cdf(-d2) - S * norm.cdf(-d1))
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # FakeContract — 鸭子类型替代 ib_async.Contract
 # ---------------------------------------------------------------------------
@@ -364,6 +394,7 @@ def build_fake_ticker(
     bid: Optional[float] = None,
     ask: Optional[float] = None,
     risk_free_rate: float = 0.045,
+    hist_vol: Optional[float] = None,
 ) -> FakeTicker:
     """
     将 Longbridge API 返回的数据组装成 FakeTicker。
@@ -372,25 +403,47 @@ def build_fake_ticker(
         - last_done, delta, gamma...  : 来自 calc_indexes()
         - bid, ask                    : 来自 depth()（可选，若无则 midpoint() 退回 last_done）
         - implied_vol                 : 来自 calc_indexes() 或 option_quote()
+        - hist_vol                    : 标的历史波动率（无行情订阅时用作 B-S fallback）
 
     delta 获取策略：
         1. 优先使用 calc_indexes() 返回的 delta
-        2. 若 delta 为 None 且有 IV，使用 Black-Scholes 计算
-        3. 若 B-S 也失败，delta 保持 None（该合约在筛选时会被跳过）
+        2. 若 delta 为 None 且有 IV，使用 Black-Scholes(IV) 计算
+        3. 若 IV 也无，且有 hist_vol，使用 Black-Scholes(hist_vol) 计算
+        4. 若均失败，delta 保持 None（该合约在筛选时会被跳过）
+
+    price 获取策略（last_done）：
+        1. 优先使用 calc_indexes() 返回的 last_done
+        2. 若 last_done 为 0 且有波动率，使用 B-S 理论价格估算
     """
     last = last_done or 0.0
 
-    # 尝试 Black-Scholes fallback
+    # 有效波动率：IV 优先，fallback 到历史波动率
+    eff_vol = implied_vol or hist_vol
+
+    # 尝试 Black-Scholes fallback delta
     computed_delta = delta
-    if computed_delta is None and implied_vol and contract.is_option():
+    if computed_delta is None and eff_vol and contract.is_option():
         computed_delta = bs_delta(
             S=contract.underlying_price,
             K=contract.strike,
             T=contract.dte / 365.0,
             r=risk_free_rate,
-            sigma=implied_vol,
+            sigma=eff_vol,
             right=contract.right,
         )
+
+    # 无 last_done 时用 B-S 理论价格估算（仅当 hist_vol fallback 激活时）
+    if last <= 0.0 and eff_vol and contract.is_option():
+        theoretical = bs_price(
+            S=contract.underlying_price,
+            K=contract.strike,
+            T=contract.dte / 365.0,
+            r=risk_free_rate,
+            sigma=eff_vol,
+            right=contract.right,
+        )
+        if theoretical and theoretical > 0:
+            last = theoretical
 
     greeks = FakeGreeks(
         delta=computed_delta,
