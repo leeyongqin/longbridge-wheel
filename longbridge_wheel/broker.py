@@ -324,7 +324,7 @@ class LongbridgeBroker:
 
         for ch in resp.channels:
             for pos in ch.positions:
-                log.debug(
+                log.info(
                     "raw pos: symbol=" + str(pos.symbol) +
                     " qty=" + str(pos.quantity) +
                     " cost=" + str(pos.cost_price)
