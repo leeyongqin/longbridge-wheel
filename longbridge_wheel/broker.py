@@ -557,6 +557,20 @@ class LongbridgeBroker:
         except Exception as exc:
             log.warning(f"{contract.symbol}: calc_indexes 失败: {exc}")
 
+        # option_quote fallback：提供 last_done / IV / OI（calc_indexes 返回 null 时使用）
+        try:
+            opt_quotes = await self._quote_ctx.option_quote([lb_symbol])
+            if opt_quotes:
+                q = opt_quotes[0]
+                if not last_done:
+                    last_done = decimal_to_float(q.last_done) or None
+                if not implied_vol:
+                    implied_vol = decimal_to_float(q.implied_volatility) or None
+                if not open_interest and q.open_interest:
+                    open_interest = float(q.open_interest)
+        except Exception as exc:
+            pass  # option_quote 失败时静默继续
+
         try:
             depth = await self._quote_ctx.depth(lb_symbol)
             if depth.bids and depth.bids[0].price:
@@ -657,23 +671,49 @@ class LongbridgeBroker:
                 "将使用空 greeks"
             )
 
+        # 批量获取 option_quote：提供 last_done / IV / OI，
+        # 作为 calc_indexes 返回 null（无 USOption 订阅）时的 fallback
+        quote_map: Dict[str, Any] = {}
+        try:
+            opt_quotes = await self._quote_ctx.option_quote(lb_symbols)
+            quote_map = {q.symbol: q for q in opt_quotes}
+        except Exception as exc:
+            log.warning(
+                f"{underlying_symbol}: 批量 option_quote 失败: {exc}，"
+                "将跳过 last_done fallback"
+            )
+
         tickers: List[FakeTicker] = []
         for contract in contracts:
             lb_sym = contract.lb_symbol()
             calc = calc_map.get(lb_sym)
+            quote = quote_map.get(lb_sym)
+
+            # last_done: 优先 calc_indexes，fallback 到 option_quote
+            last_done_val = decimal_to_float(calc.last_done) if calc else None
+            if not last_done_val and quote is not None:
+                last_done_val = decimal_to_float(quote.last_done) or None
+
+            # implied_vol: 同上
+            implied_vol_val = decimal_to_float(calc.implied_volatility) if calc else None
+            if not implied_vol_val and quote is not None:
+                implied_vol_val = decimal_to_float(quote.implied_volatility) or None
+
+            # open_interest: 同上
+            open_interest_val = float(calc.open_interest) if calc and calc.open_interest else None
+            if not open_interest_val and quote is not None and quote.open_interest:
+                open_interest_val = float(quote.open_interest)
 
             ticker = build_fake_ticker(
                 contract=contract,
-                last_done=decimal_to_float(calc.last_done) if calc else None,
+                last_done=last_done_val,
                 delta=decimal_to_float(calc.delta) if calc else None,
                 gamma=decimal_to_float(calc.gamma) if calc else None,
                 theta=decimal_to_float(calc.theta) if calc else None,
                 vega=decimal_to_float(calc.vega) if calc else None,
                 rho=decimal_to_float(calc.rho) if calc else None,
-                implied_vol=decimal_to_float(calc.implied_volatility) if calc else None,
-                open_interest=(
-                    float(calc.open_interest) if calc and calc.open_interest else None
-                ),
+                implied_vol=implied_vol_val,
+                open_interest=open_interest_val,
                 bid=None,   # 批量场景不逐个调用 depth()
                 ask=None,
                 risk_free_rate=self.config.longbridge.risk_free_rate,
