@@ -92,13 +92,20 @@ class LongbridgeConfig(BaseModel):
 # 订单配置（移除 IBKR algo 相关）
 # ---------------------------------------------------------------------------
 
+class AlgoConfig(BaseModel):
+    """IBKR algo 存根 — LB 不支持，strategy/params 字段保留供 post_engine.py 兼容访问。"""
+    strategy: str = Field(default="")
+    params: List[Any] = Field(default_factory=list)
+
+
 class OrdersConfig(BaseModel, DisplayMixin):
     minimum_credit: float = Field(default=0.0, ge=0.0)
     exchange: str = Field(default="SMART")  # 保留兼容性，LB 自动路由
     price_update_delay: List[int] = Field(
         default_factory=lambda: [30, 60], min_length=2, max_length=2
     )
-    # 注意：删除了 algo 配置（IBKR Adaptive Patient 算法），LB 使用标准限价单
+    # algo 字段保留兼容性（LB 不使用，strategy/params 均为空）
+    algo: AlgoConfig = Field(default_factory=AlgoConfig)
 
     def add_to_table(self, table: Table, section: str = "") -> None:
         table.add_section()
@@ -174,7 +181,8 @@ class DatabaseConfig(BaseModel, DisplayMixin):
 class CashManagementConfig(BaseModel, DisplayMixin):
     class Orders(BaseModel):
         exchange: str = Field(default="SMART")
-        # 注意：删除了 algo（LB 不支持 VWAP 算法订单），使用标准限价单
+        # algo 字段保留兼容性（LB 不使用）
+        algo: "AlgoConfig" = Field(default_factory=lambda: AlgoConfig())
 
     enabled: bool = Field(default=False)
     cash_fund: str = Field(default="SGOV")
