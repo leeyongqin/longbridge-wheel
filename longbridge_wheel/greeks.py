@@ -155,6 +155,11 @@ class FakeContract(Contract):
     def dte(self, value: int) -> None:
         self._dte = value
 
+    @property
+    def primaryExchange(self) -> str:
+        """ib_async alias for primaryExch (used by options_engine)"""
+        return self.primaryExch
+
     def is_option(self) -> bool:
         return self.secType == "OPT"
 
