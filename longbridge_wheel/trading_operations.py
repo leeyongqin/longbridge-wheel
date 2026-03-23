@@ -377,7 +377,7 @@ class OptionChainScanner:
         def price_is_valid(ticker: FakeTicker) -> bool:
             from longbridge_wheel.compat import Option
             price = midpoint_or_market_price(ticker)
-            if price <= minimum_price():
+            if math.isnan(price) or price <= minimum_price():
                 return False
             # 成本不能超过市价 + 标的价格（put 特有检查）
             if right.startswith("C"):
@@ -496,10 +496,17 @@ class OptionChainScanner:
         except Exception as exc:
             log.warning(f"{symbol}: 刷新最优合约行情失败，使用 B-S 估算价格: {exc}")
 
+        final_price = midpoint_or_market_price(chosen)
+        if math.isnan(final_price) or final_price <= 0:
+            raise NoValidContractsError(
+                f"{symbol}: 最优合约价格不可用（bid/ask/last 均为 NaN 或 0），"
+                f"可能需要 USOption 行情订阅"
+            )
+
         log.notice(
             f"{symbol}: 找到最优合约 "
             f"strike={chosen.contract.strike} "
             f"dte={option_dte(chosen.contract.lastTradeDateOrContractMonth)} "
-            f"price={dfmt(midpoint_or_market_price(chosen), 3)}"
+            f"price={dfmt(final_price, 3)}"
         )
         return chosen
