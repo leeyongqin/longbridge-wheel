@@ -483,6 +483,19 @@ class OptionChainScanner:
                 f"{symbol}: 选择合约时出现意外错误, chosen={chosen}"
             )
 
+        # 步骤 8：用 depth() 刷新最优合约的真实买卖价，确保限价单反映市场实际价格
+        # 批量扫描时不调用 depth()（太慢），只对最终选定合约做一次单独查询
+        try:
+            refreshed = await self.ibkr.get_ticker_for_contract(chosen.contract)
+            chosen = refreshed
+            log.notice(
+                f"{symbol}: 最优合约行情已刷新 "
+                f"bid={refreshed.bid:.3f} ask={refreshed.ask:.3f} "
+                f"midpoint={refreshed.midpoint():.3f}"
+            )
+        except Exception as exc:
+            log.warning(f"{symbol}: 刷新最优合约行情失败，使用 B-S 估算价格: {exc}")
+
         log.notice(
             f"{symbol}: 找到最优合约 "
             f"strike={chosen.contract.strike} "

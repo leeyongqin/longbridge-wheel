@@ -43,7 +43,7 @@ from longbridge_wheel.greeks import (
     decimal_to_float,
     parse_option_symbol,
 )
-from longbridge_wheel.trades import LBTrade, LBOrderStatus
+from longbridge_wheel.trades import LBTrade, LBOrderStatus, _DONE_STATUSES
 
 if TYPE_CHECKING:
     from longbridge_wheel.config import Config
@@ -219,6 +219,18 @@ class LongbridgeBroker:
 
         # 从 LB OrderStatus 枚举类型提取状态名称字符串
         status_name = _lb_status_name(event.status)
+
+        # 不允许用非终态状态覆盖已终态的订单（防止 WS 事件乱序导致虚假"未完结"日志）
+        if (
+            trade.orderStatus.status in _DONE_STATUSES
+            and status_name not in _DONE_STATUSES
+        ):
+            log.info(
+                f"{trade.contract.symbol}: 忽略状态回退事件 "
+                f"{trade.orderStatus.status} → {status_name} (order_id={order_id})"
+            )
+            return
+
         trade.orderStatus.status = status_name
         trade.orderStatus.filled = float(getattr(event, "executed_quantity", 0) or 0)
 
