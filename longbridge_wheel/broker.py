@@ -301,10 +301,14 @@ class LongbridgeBroker:
         获取账户持仓，映射为 thetagang 兼容的 PortfolioItem 列表。
 
         LB 的 stock_positions() 同时返回股票和期权持仓（均在同一接口下）。
+        多个 channel（股票账户 / 期权账户）可能重复报告同一持仓，使用
+        localSymbol 去重，保留持仓量绝对值最大的那条。
         """
         await asyncio.sleep(0.02)
         resp = await self._trade_ctx.stock_positions()
-        items: List[PortfolioItem] = []
+
+        # 使用 localSymbol 去重，避免多 channel 重复
+        seen: Dict[str, PortfolioItem] = {}
 
         for ch in resp.channels:
             for pos in ch.positions:
@@ -328,9 +332,13 @@ class LongbridgeBroker:
                     realizedPNL=0.0,
                     account=account,
                 )
-                items.append(item)
 
-        return items
+                key = contract.localSymbol
+                existing = seen.get(key)
+                if existing is None or abs(qty) >= abs(existing.position):
+                    seen[key] = item
+
+        return list(seen.values())
 
     # ------------------------------------------------------------------
     # 合约工具
@@ -349,18 +357,24 @@ class LongbridgeBroker:
         将 LB symbol 字符串转换为 FakeContract。
 
         规则：
-            "AAPL.US"              → FakeStock（股票）
-            "AAPL240119C00150000"  → FakeOption（期权，OCC 格式）
+            "AAPL.US"                  → FakeStock（股票：点前全为字母）
+            "SPY260618P640000.US"      → FakeOption（期权：点前含数字）
+            "AAPL240119C00150000"      → FakeOption（期权，无后缀）
         """
         if not lb_symbol:
             return None
 
-        # 股票：以".US"、".HK" 等市场后缀结尾
         if "." in lb_symbol:
-            ticker = lb_symbol.split(".")[0]
-            return build_stock_contract(ticker)
+            pre_dot = lb_symbol.split(".")[0]
+            # 股票：ticker 全为字母（如 "AAPL", "SPY", "TSLA"）
+            # 期权：ticker 含数字（如 "SPY260618P640000"）
+            if pre_dot.isalpha():
+                return build_stock_contract(pre_dot)
+            else:
+                # 期权带 .US 后缀（LB 格式：如 "SPY260618P640000.US"）
+                return parse_option_symbol(lb_symbol)
 
-        # 期权：纯字母+数字格式，尝试 OCC 解析
+        # 无后缀：尝试期权解析（老格式 OCC）
         return parse_option_symbol(lb_symbol)
 
     # ------------------------------------------------------------------
