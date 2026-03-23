@@ -323,7 +323,13 @@ class LongbridgeBroker:
         seen: Dict[str, PortfolioItem] = {}
 
         for ch in resp.channels:
+            log.debug(f"portfolio channel: account_channel={ch.account_channel!r}")
             for pos in ch.positions:
+                log.debug(
+                    f"  raw pos: symbol={pos.symbol!r} "
+                    f"qty={pos.quantity} cost={pos.cost_price} "
+                    f"market={pos.market} name={pos.symbol_name!r}"
+                )
                 contract = self._lb_symbol_to_contract(pos.symbol)
                 if contract is None:
                     log.warning(f"portfolio: 无法解析 symbol={pos.symbol}，已跳过")
