@@ -324,15 +324,11 @@ class LongbridgeBroker:
 
         for ch in resp.channels:
             for pos in ch.positions:
-                try:
-                    log.debug(
-                        f"raw pos: symbol={getattr(pos,'symbol','?')!r} "
-                        f"qty={getattr(pos,'quantity','?')} "
-                        f"cost={getattr(pos,'cost_price','?')} "
-                        f"name={getattr(pos,'symbol_name','?')!r}"
-                    )
-                except Exception as _dbg_e:
-                    log.debug(f"raw pos: error reading fields: {_dbg_e}")
+                log.debug(
+                    "raw pos: symbol=" + str(pos.symbol) +
+                    " qty=" + str(pos.quantity) +
+                    " cost=" + str(pos.cost_price)
+                )
                 contract = self._lb_symbol_to_contract(pos.symbol)
                 if contract is None:
                     log.warning(f"portfolio: 无法解析 symbol={pos.symbol}，已跳过")
