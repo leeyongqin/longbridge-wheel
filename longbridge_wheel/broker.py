@@ -324,11 +324,6 @@ class LongbridgeBroker:
 
         for ch in resp.channels:
             for pos in ch.positions:
-                log.info(
-                    "raw pos: symbol=" + str(pos.symbol) +
-                    " qty=" + str(pos.quantity) +
-                    " cost=" + str(pos.cost_price)
-                )
                 contract = self._lb_symbol_to_contract(pos.symbol)
                 if contract is None:
                     log.warning(f"portfolio: 无法解析 symbol={pos.symbol}，已跳过")
@@ -355,7 +350,12 @@ class LongbridgeBroker:
                 if existing is None or abs(qty) >= abs(existing.position):
                     seen[key] = item
 
-        return list(seen.values())
+        # 为每个持仓分配唯一 conId（portfolio_manager 用 conId 作为 position_values 的 key，
+        # 所有 FakeContract.conId 默认为 0 会导致数据互相覆盖）
+        result = list(seen.values())
+        for i, item in enumerate(result):
+            item.contract.conId = i + 1
+        return result
 
     # ------------------------------------------------------------------
     # 合约工具
