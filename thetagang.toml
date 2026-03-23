@@ -3,13 +3,15 @@
 # ============================================================
 #
 # 使用前请：
-# 1. 设置环境变量（API 认证）：
+# 1. 设置环境变量（在长桥开发者后台 https://open.longbridge.com 获取）：
 #    export LONGBRIDGE_APP_KEY="your_app_key"
 #    export LONGBRIDGE_APP_SECRET="your_app_secret"
 #    export LONGBRIDGE_ACCESS_TOKEN="your_access_token"
 #
-# 2. 修改 [runtime.account] 中的账户号
-# 3. 修改 [portfolio.symbols] 中的标的和权重
+# 2. 修改 [portfolio.symbols] 中的标的和权重
+#
+# 注意：[runtime.account] 的 number 字段可留空，
+#       LB 认证通过 Access Token 绑定账户，无需手动填写账户号。
 #
 # ============================================================
 
@@ -25,8 +27,9 @@ strategies = ["wheel", "cash_management"]
 # ============================================================
 
 [runtime.account]
-# 长桥账户号（实盘或模拟账户）
-number = "YOUR_ACCOUNT_NUMBER"
+# number 可留空——LB 通过 Access Token 绑定账户，无需手动填写账户号
+# 若需在 DB 记录中区分多账户，可填写账户号（非必须）
+# number = ""
 
 # 启动时撤销本账户中未成交的相关订单
 cancel_orders = true

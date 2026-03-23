@@ -34,14 +34,15 @@ class DisplayMixin:
 # ---------------------------------------------------------------------------
 
 class AccountConfig(BaseModel, DisplayMixin):
-    number: str = Field(...)
+    # LB 认证通过 Access Token 绑定账户，number 仅用于 DB 记录标识（可留空）
+    number: str = Field(default="")
     margin_usage: float = Field(..., ge=0.0)
     cancel_orders: bool = Field(default=True)
     # 注意：删除了 market_data_type（IBKR 专属），LB 始终提供实时行情
 
     def add_to_table(self, table: Table, section: str = "") -> None:
         table.add_row("[spring_green1]Account details")
-        table.add_row("", "Account number", "=", self.number)
+        table.add_row("", "Account number", "=", self.number or "(from Access Token)")
         table.add_row("", "Cancel existing orders", "=", f"{self.cancel_orders}")
         table.add_row(
             "",
