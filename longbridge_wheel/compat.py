@@ -26,23 +26,67 @@ from typing import Any, List, Optional
 # ---------------------------------------------------------------------------
 
 class Contract:
-    """ib_async.Contract 兼容标记基类。所有合约类型的基类。"""
-    pass
+    """
+    ib_async.Contract 兼容标记基类。
+
+    支持与 ib_async 相同的位置/关键字参数构造，供策略引擎
+    直接调用 Stock(symbol, exchange) / Index("VIX", "CBOE", "USD") 等。
+    FakeContract（greeks.py）是 @dataclass，有自己的 __init__，不受此影响。
+    """
+
+    def __init__(
+        self,
+        symbol: str = "",
+        exchange: str = "",
+        currency: str = "USD",
+        primaryExch: str = "",
+        secType: str = "",
+        conId: int = 0,
+        multiplier: str = "",
+        localSymbol: str = "",
+        right: str = "",
+        strike: float = 0.0,
+        lastTradeDateOrContractMonth: str = "",
+        **kwargs: Any,
+    ) -> None:
+        self.symbol = symbol
+        self.exchange = exchange
+        self.currency = currency
+        self.primaryExch = primaryExch
+        self.secType = secType
+        self.conId = conId
+        self.multiplier = multiplier
+        self.localSymbol = localSymbol or (f"{symbol}.US" if symbol else "")
+        self.right = right
+        self.strike = strike
+        self.lastTradeDateOrContractMonth = lastTradeDateOrContractMonth
 
 
 class Option(Contract):
     """ib_async.contract.Option 兼容标记类。期权合约的 isinstance 哨兵。"""
-    pass
+
+    def __init__(self, symbol: str = "", exchange: str = "", currency: str = "USD",
+                 **kwargs: Any) -> None:
+        super().__init__(symbol=symbol, exchange=exchange, currency=currency,
+                         secType="OPT", **kwargs)
 
 
 class Stock(Contract):
     """ib_async.contract.Stock 兼容标记类。股票合约的 isinstance 哨兵。"""
-    pass
+
+    def __init__(self, symbol: str = "", exchange: str = "", currency: str = "USD",
+                 **kwargs: Any) -> None:
+        super().__init__(symbol=symbol, exchange=exchange, currency=currency,
+                         secType="STK", **kwargs)
 
 
 class Index(Contract):
     """ib_async.contract.Index 兼容标记类。指数的 isinstance 哨兵。"""
-    pass
+
+    def __init__(self, symbol: str = "", exchange: str = "", currency: str = "USD",
+                 **kwargs: Any) -> None:
+        super().__init__(symbol=symbol, exchange=exchange, currency=currency,
+                         secType="IND", **kwargs)
 
 
 class ComboLeg:
