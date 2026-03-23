@@ -53,6 +53,7 @@ class Contract:
         self.exchange = exchange
         self.currency = currency
         self.primaryExch = primaryExch
+        self.primaryExchange = primaryExch   # ib_async alias used by options_engine
         self.secType = secType
         self.conId = conId
         self.multiplier = multiplier
