@@ -149,9 +149,10 @@ class LongbridgeBroker:
         )
 
         lb_config = LBConfig.from_apikey_env()
-        loop = asyncio.get_event_loop()
-        self._quote_ctx = AsyncQuoteContext.create(lb_config)
-        self._trade_ctx = AsyncTradeContext.create(lb_config, loop_=loop)
+        loop = asyncio.get_running_loop()
+        # create() 实际返回 Future，需要 await（pyi 类型注解有误）
+        self._quote_ctx = await AsyncQuoteContext.create(lb_config, loop_=loop)
+        self._trade_ctx = await AsyncTradeContext.create(lb_config, loop_=loop)
 
         # 注册订单变化回调（WebSocket 实时推送，不占 REST 配额）
         self._trade_ctx.set_on_order_changed(self._on_order_changed)
