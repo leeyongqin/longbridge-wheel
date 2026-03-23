@@ -20,7 +20,8 @@ schema_version = 2
 
 # 启用的策略模块（vix_call_hedge v1 暂不支持）
 [run]
-strategies = ["wheel", "cash_management"]
+strategies = ["wheel", "equity_rebalance", "cash_management"]
+# ⚠️ equity_rebalance 已启用：会自动买卖股票以维持权重比例，实盘需确认
 
 # ============================================================
 # 账户配置
@@ -95,7 +96,7 @@ exchange = "SMART"
 # 价格调整延迟范围（秒）：[最短, 最长]
 # 若标的配置了 adjust_price_after_delay = true，
 # 在提交订单后随机等待此区间内的时间，再进行重定价
-price_update_delay = [30, 60]
+price_update_delay = [5, 15]
 
 # 最低信用额（美元）：低于此值的订单将被跳过（避免不覆盖手续费）
 minimum_credit = 0.05
@@ -125,18 +126,18 @@ path = "data/longbridge_wheel.db"
 # ============================================================
 
 [strategies.wheel.defaults.target]
-# 目标到期天数（DTE）：选择 DTE >= 此值的合约
-dte = 45
+# 目标到期天数（DTE）：选择 DTE >= 此值的合约（高频测试：14天）
+dte = 14
 
 # 最大 DTE：避免 roll 到过远的到期日
-max_dte = 180
+max_dte = 60
 
-# 目标 delta：选择 |delta| <= 此值的合约
-delta = 0.30
+# 目标 delta：选择 |delta| <= 此值的合约（高频测试：0.40）
+delta = 0.40
 
 # 新开仓时单次最大合约数（占购买力百分比）
-# 默认 5%：若购买力 $100,000，则单次最多买入 $5,000 价值对应的合约数
-maximum_new_contracts_percent = 0.05
+# 高频测试：15%（便于快速开仓）
+maximum_new_contracts_percent = 0.15
 
 # 最低持仓量（Open Interest）过滤：OI < 此值的合约跳过
 minimum_open_interest = 100
@@ -157,11 +158,11 @@ calculate_net_contracts = false
   red   = true
 
 [strategies.wheel.defaults.roll_when]
-# 当 DTE <= 此值时尝试 roll
-dte = 21
+# 当 DTE <= 此值时尝试 roll（高频测试：7天）
+dte = 7
 
-# 当持仓盈利 >= 此比例时提前 roll（例如 0.5 = 盈利 50% 时 roll）
-pnl = 0.50
+# 当持仓盈利 >= 此比例时提前 roll（高频测试：25% 即 roll）
+pnl = 0.25
 
 # DTE 剩余较少时是否强制 roll（不论 delta）
 min_dte = 0
@@ -180,8 +181,8 @@ min_dte = 0
 
 [strategies.wheel.defaults.close_at_pnl]
 # 当持仓盈利达到此比例时，提前关仓（buyback）
-# 设置为 1.0 表示不提前平仓
-max = 1.0
+# 高频测试：盈利 50% 时平仓
+max = 0.50
 
 [strategies.wheel.defaults.constants]
 # 计算历史波动率所用的历史数据窗口（用于 write_threshold）
@@ -192,8 +193,8 @@ daily_stddev_window = "21 D"
 # ============================================================
 
 [strategies.cash_management]
-# 将闲置现金投入货币市场基金
-enabled = false
+# 将闲置现金投入货币市场基金（高频测试：已启用）
+enabled = true
 
 # 货币市场基金代码（例如：SGOV / BIL / VMFXX）
 cash_fund = "SGOV"
@@ -225,23 +226,28 @@ enabled = false
 
 [portfolio.symbols.SPY]
 weight = 1.0
-# 覆盖全局 target_dte
-# dte = 45
-# 覆盖全局 target_delta
-# delta = 0.30
-# 最低 OI 过滤
-# minimum_open_interest = 100
-# 提交订单后是否在 price_update_delay 后重定价
 adjust_price_after_delay = true
 primary_exchange = "ARCA"
 
-# 以下为多标的示例（取消注释即可使用）：
-# [portfolio.symbols.QQQ]
-# weight = 0.5
-# primary_exchange = "NASDAQ"
-# adjust_price_after_delay = true
-#
-# [portfolio.symbols.AAPL]
-# weight = 0.3
-# primary_exchange = "NASDAQ"
-# delta = 0.25      # 覆盖全局 delta
+[portfolio.symbols.QQQ]
+weight = 0.8
+adjust_price_after_delay = true
+primary_exchange = "NASDAQ"
+
+[portfolio.symbols.NVDA]
+weight = 0.5
+adjust_price_after_delay = true
+primary_exchange = "NASDAQ"
+minimum_open_interest = 50
+
+[portfolio.symbols.TSLA]
+weight = 0.5
+adjust_price_after_delay = true
+primary_exchange = "NASDAQ"
+minimum_open_interest = 50
+# 用户持有 100 股 TSLA，wheel 策略将自动写 covered call
+
+[portfolio.symbols.AAPL]
+weight = 0.5
+adjust_price_after_delay = true
+primary_exchange = "NASDAQ"
