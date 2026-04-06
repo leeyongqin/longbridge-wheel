@@ -54,6 +54,11 @@ margin_usage = 0.5
 # 仅当 calc_indexes() 返回 null delta 时使用（流动性差的合约）
 risk_free_rate = 0.045
 
+# Finnhub API Key（无 USOption 行情订阅时获取实时期权价格）
+# 免费注册：https://finnhub.io/register
+# 也可通过环境变量 FINNHUB_API_KEY 传入（推荐，避免提交到 git）
+finnhub_api_key = "d79rsp1r01qspme5u1h0d79rsp1r01qspme5u1hg"
+
 # ============================================================
 # 期权链扫描配置
 # ============================================================

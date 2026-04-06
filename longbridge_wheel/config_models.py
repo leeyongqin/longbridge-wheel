@@ -87,6 +87,14 @@ class LongbridgeConfig(BaseModel):
         description="交易 API 请求最小间隔（秒），LB 要求最小 0.02s"
     )
 
+    # Finnhub API Key（无 USOption 行情订阅时用于获取实时期权价格）
+    # 免费注册：https://finnhub.io/register
+    # 也可通过环境变量 FINNHUB_API_KEY 传入
+    finnhub_api_key: Optional[str] = Field(
+        default=None,
+        description="Finnhub API Key，无 USOption 订阅时用于获取实时期权 bid/ask/IV"
+    )
+
 
 # ---------------------------------------------------------------------------
 # 订单配置（移除 IBKR algo 相关）

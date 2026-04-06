@@ -584,28 +584,18 @@ class LongbridgeBroker:
         except Exception:
             pass  # depth 不可用时静默退回 last_done
 
-        # 无实时行情时，尝试从历史 K 线获取期权昨日收盘价
-        # history_candlesticks_by_date() 为历史数据接口，可能不需要 USOption 实时订阅
-        if not last_done and not bid and not ask and contract.is_option():
-            try:
-                from longbridge.openapi import AdjustType, Period, TradeSessions
-                candles = await self._quote_ctx.history_candlesticks_by_date(
-                    symbol=lb_symbol,
-                    period=Period.Day,
-                    adjust_type=AdjustType.NoAdjust,
-                    start=date.today() - timedelta(days=5),
-                    end=date.today(),
-                    trade_sessions=TradeSessions.Intraday,
+        # Finnhub fallback：无 USOption 订阅时获取实时期权 bid/ask/IV
+        if contract.is_option() and not bid and not ask and not last_done:
+            fh = await self._get_finnhub_option_data(contract)
+            if fh:
+                bid = fh.get("bid")
+                ask = fh.get("ask")
+                last_done = last_done or fh.get("last")
+                implied_vol = implied_vol or fh.get("iv")
+                log.info(
+                    f"{contract.symbol}: Finnhub 实时价格 "
+                    f"bid={bid} ask={ask} last={last_done} iv={implied_vol}"
                 )
-                if candles:
-                    prev_close = float(candles[-1].close)
-                    if prev_close > 0:
-                        last_done = prev_close
-                        log.info(
-                            f"{contract.symbol}: 使用期权历史收盘价作为挂单参考价: {prev_close:.3f}"
-                        )
-            except Exception:
-                pass  # 期权历史行情不可用时静默继续（可能也需要 USOption 订阅）
 
         return build_fake_ticker(
             contract=contract,
@@ -622,6 +612,73 @@ class LongbridgeBroker:
             risk_free_rate=self.config.longbridge.risk_free_rate,
             hist_vol=hist_vol,
         )
+
+    async def _get_finnhub_chain(
+        self, symbol: str, expiry_yyyymmdd: str
+    ) -> Dict[tuple, dict]:
+        """
+        从 Finnhub 获取指定到期日的完整期权链。
+        返回 {(right, strike) -> {bid, ask, last, iv, oi}} 字典。
+        需要 config.longbridge.finnhub_api_key 或环境变量 FINNHUB_API_KEY。
+        """
+        import json
+        import os
+        import urllib.request
+
+        api_key = self.config.longbridge.finnhub_api_key or os.environ.get("FINNHUB_API_KEY")
+        if not api_key:
+            return {}
+
+        expiry_fmt = f"{expiry_yyyymmdd[:4]}-{expiry_yyyymmdd[4:6]}-{expiry_yyyymmdd[6:8]}"
+        url = (
+            f"https://finnhub.io/api/v1/stock/option-chain"
+            f"?symbol={symbol}&expiration={expiry_fmt}&token={api_key}"
+        )
+
+        try:
+            loop = asyncio.get_event_loop()
+
+            def fetch() -> dict:
+                req = urllib.request.Request(
+                    url, headers={"User-Agent": "longbridge-wheel/1.0"}
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    return json.loads(resp.read())
+
+            data = await loop.run_in_executor(None, fetch)
+
+            result: Dict[tuple, dict] = {}
+            for expiry_block in data.get("data", []):
+                options = expiry_block.get("options", {})
+                for side_key, side_list in options.items():
+                    right = "C" if side_key == "CALL" else "P"
+                    for opt in side_list:
+                        strike = float(opt.get("strike") or 0)
+                        if strike <= 0:
+                            continue
+                        result[(right, strike)] = {
+                            "bid": float(opt["bid"]) if opt.get("bid") else None,
+                            "ask": float(opt["ask"]) if opt.get("ask") else None,
+                            "last": float(opt["last"]) if opt.get("last") else None,
+                            "iv": float(opt["impliedVolatility"]) if opt.get("impliedVolatility") else None,
+                            "oi": int(opt.get("openInterest") or 0),
+                        }
+            return result
+        except Exception as exc:
+            log.warning(f"{symbol}: Finnhub 期权链获取失败 (expiry={expiry_fmt}): {exc}")
+            return {}
+
+    async def _get_finnhub_option_data(
+        self, contract: FakeContract
+    ) -> Optional[dict]:
+        """单个期权合约的 Finnhub 行情（bid/ask/last/iv）。"""
+        if not contract.is_option():
+            return None
+        chain = await self._get_finnhub_chain(
+            contract.symbol,
+            contract.lastTradeDateOrContractMonth,
+        )
+        return chain.get((contract.right, contract.strike))
 
     async def get_underlying_hist_vol(
         self, symbol: str, window: int = 21
