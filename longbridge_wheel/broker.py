@@ -584,6 +584,29 @@ class LongbridgeBroker:
         except Exception:
             pass  # depth 不可用时静默退回 last_done
 
+        # 无实时行情时，尝试从历史 K 线获取期权昨日收盘价
+        # history_candlesticks_by_date() 为历史数据接口，可能不需要 USOption 实时订阅
+        if not last_done and not bid and not ask and contract.is_option():
+            try:
+                from longbridge.openapi import AdjustType, Period, TradeSessions
+                candles = await self._quote_ctx.history_candlesticks_by_date(
+                    symbol=lb_symbol,
+                    period=Period.Day,
+                    adjust_type=AdjustType.NoAdjust,
+                    start=date.today() - timedelta(days=5),
+                    end=date.today(),
+                    trade_sessions=TradeSessions.Intraday,
+                )
+                if candles:
+                    prev_close = float(candles[-1].close)
+                    if prev_close > 0:
+                        last_done = prev_close
+                        log.info(
+                            f"{contract.symbol}: 使用期权历史收盘价作为挂单参考价: {prev_close:.3f}"
+                        )
+            except Exception:
+                pass  # 期权历史行情不可用时静默继续（可能也需要 USOption 订阅）
+
         return build_fake_ticker(
             contract=contract,
             last_done=last_done,
