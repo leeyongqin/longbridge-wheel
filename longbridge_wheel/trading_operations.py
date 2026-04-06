@@ -485,6 +485,7 @@ class OptionChainScanner:
 
         # 步骤 8：用 depth() 刷新最优合约的真实买卖价，确保限价单反映市场实际价格
         # 批量扫描时不调用 depth()（太慢），只对最终选定合约做一次单独查询
+        pre_refresh = chosen  # 保存批量计算的价格（含 B-S 理论价）
         try:
             refreshed = await self.ibkr.get_ticker_for_contract(chosen.contract)
             chosen = refreshed
@@ -498,10 +499,17 @@ class OptionChainScanner:
 
         final_price = midpoint_or_market_price(chosen)
         if math.isnan(final_price) or final_price <= 0:
-            raise NoValidContractsError(
-                f"{symbol}: 最优合约价格不可用（bid/ask/last 均为 NaN 或 0），"
-                f"可能需要 USOption 行情订阅"
+            # 无 USOption 行情时回退到批量 B-S 理论价（hist_vol 来自历史 K 线，无需期权订阅）
+            final_price = midpoint_or_market_price(pre_refresh)
+            if math.isnan(final_price) or final_price <= 0:
+                raise NoValidContractsError(
+                    f"{symbol}: 最优合约价格不可用（bid/ask/last 均为 NaN 或 0），"
+                    f"可能需要 USOption 行情订阅"
+                )
+            log.warning(
+                f"{symbol}: 无实时行情，使用 B-S 估算价格下单: {final_price:.3f}"
             )
+            chosen = pre_refresh
 
         log.notice(
             f"{symbol}: 找到最优合约 "
